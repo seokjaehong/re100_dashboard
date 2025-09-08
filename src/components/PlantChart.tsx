@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Paper, Typography, ToggleButton, ToggleButtonGroup, Box, Collapse, IconButton, Table, TableBody, TableCell, TableContainer, TableHead, TableRow } from '@mui/material';
 import { CSVRow } from '../types';
@@ -8,59 +8,137 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 
 interface PlantChartProps {
   rawData: CSVRow[];
+  aggregatedData?: any;
 }
 
-const PlantChart: React.FC<PlantChartProps> = ({ rawData }) => {
+const PlantChart: React.FC<PlantChartProps> = ({ rawData, aggregatedData }) => {
   const [aggregation, setAggregation] = useState<'hourly' | 'monthly'>('hourly');
   const [showTable, setShowTable] = useState(false);
+  const [monthlyChartData, setMonthlyChartData] = useState<any[]>([]);
+
+  useEffect(() => {
+    // aggregatedData가 있으면 사용, 없으면 rawData에서 계산
+    if ((aggregatedData && aggregatedData.plantMonthly) || (rawData && rawData.length > 0)) {
+      // 월별 데이터 재구성 (평균값 계산)
+      const monthlyData: { [key: string]: { [key: string]: { total: number; days: number } } } = {};
+      const daysInMonth: { [key: string]: number } = {
+        '1월': 31, '2월': 29, '3월': 31, '4월': 30, '5월': 31, '6월': 30,
+        '7월': 31, '8월': 31, '9월': 30, '10월': 31, '11월': 30, '12월': 31
+      };
+      
+      if (aggregatedData && aggregatedData.plantMonthly) {
+        aggregatedData.plantMonthly.forEach((item: any) => {
+          if (!monthlyData[item.month]) {
+            monthlyData[item.month] = {};
+          }
+          const key = `${item.type}_${item.plant}`;
+          const days = daysInMonth[item.month] || 30;
+          monthlyData[item.month][key] = { 
+            total: item.value, 
+            days: days 
+          };
+        });
+      } else if (rawData && rawData.length > 0) {
+        // rawData에서 직접 월별 데이터 계산
+        const plantData = rawData.filter(row => row.type === 'solar' || row.type === 'wind');
+        plantData.forEach(row => {
+          const date = parseISO(row.datetime);
+          const monthKey = `${date.getMonth() + 1}월`;
+          
+          if (!monthlyData[monthKey]) {
+            monthlyData[monthKey] = {};
+          }
+          
+          const key = `${row.type}_${row.plant_name}`;
+          if (!monthlyData[monthKey][key]) {
+            monthlyData[monthKey][key] = { total: 0, days: daysInMonth[monthKey] || 30 };
+          }
+          monthlyData[monthKey][key].total += row.value;
+        });
+      }
+      
+      // 평균값 계산하여 배열로 변환
+      const avgMonthlyData = Object.entries(monthlyData).map(([month, plants]) => {
+        const avgData: any = { period: month };
+        Object.entries(plants).forEach(([plantKey, data]) => {
+          // 월 총 발전량을 (일수 * 24시간)으로 나누어 평균 시간당 출력(GW) 계산
+          avgData[plantKey] = data.total / (data.days * 24);
+        });
+        return avgData;
+      });
+      
+      // 정렬
+      const sortedData = avgMonthlyData.sort((a: any, b: any) => {
+        const monthOrder = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'];
+        return monthOrder.indexOf(a.period) - monthOrder.indexOf(b.period);
+      });
+      
+      setMonthlyChartData(sortedData);
+    }
+  }, [aggregatedData]);
 
   const handleAggregationChange = (_: any, newValue: 'hourly' | 'monthly' | null) => {
     if (newValue) setAggregation(newValue);
   };
 
-  const aggregateData = () => {
-    const aggregated: { [key: string]: { [plantName: string]: number } } = {};
+  const aggregateHourlyData = () => {
+    if (!rawData || rawData.length === 0) {
+      return [];
+    }
+    
+    const aggregated: { [key: string]: { [plantName: string]: { total: number; count: number } } } = {};
     
     // 발전소만 필터링 (demand 제외)
     const plantData = rawData.filter(row => row.type !== 'demand');
 
     plantData.forEach(row => {
       const date = parseISO(row.datetime);
-      const periodKey = aggregation === 'monthly' 
-        ? format(date, 'yyyy-MM')
-        : format(date, 'HH:00');
+      const periodKey = format(date, 'HH:00');
 
       if (!aggregated[periodKey]) {
         aggregated[periodKey] = {};
       }
 
       const key = `${row.type}_${row.plant_name}`;
-      aggregated[periodKey][key] = (aggregated[periodKey][key] || 0) + row.value;
+      if (!aggregated[periodKey][key]) {
+        aggregated[periodKey][key] = { total: 0, count: 0 };
+      }
+      aggregated[periodKey][key].total += row.value;
+      aggregated[periodKey][key].count += 1;
     });
 
-    const chartData = Object.entries(aggregated).map(([period, values]) => ({
-      period,
-      ...values
-    }));
+    // 평균 계산 및 GWh를 GW로 변환 (시간당 평균이므로 단위 변환 불필요)
+    const chartData = Object.entries(aggregated).map(([period, values]) => {
+      const avgValues: any = { period };
+      Object.entries(values).forEach(([key, data]) => {
+        avgValues[key] = data.count > 0 ? data.total / data.count : 0;
+      });
+      return avgValues;
+    });
 
     return chartData.sort((a, b) => a.period.localeCompare(b.period));
   };
 
-  const chartData = aggregateData();
-  const dataKeys = chartData.length > 0 
+  const chartData = aggregation === 'monthly' ? monthlyChartData : aggregateHourlyData();
+  const dataKeys = chartData && chartData.length > 0 
     ? Object.keys(chartData[0]).filter(key => key !== 'period')
     : [];
 
-  const colors = [
-    '#FFA726', '#42A5F5', '#66BB6A', '#EF5350', '#AB47BC',
-    '#26C6DA', '#FFA1B5', '#7E57C2', '#FF7043', '#8D6E63'
-  ];
+  const getColor = (key: string) => {
+    if (key.includes('solar')) return '#FFA726';
+    if (key.includes('wind')) return '#42A5F5';
+    return '#9E9E9E';
+  };
+
+  const formatValue = (value: number) => {
+    return value ? value.toFixed(2) : '0';
+  };
 
   return (
     <Paper sx={{ p: 2, width: '100%' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <Typography variant="h6">
-          발전소별 발전 현황
+          발전소별 평균 발전 현황
         </Typography>
         <ToggleButtonGroup
           value={aggregation}
@@ -72,27 +150,28 @@ const PlantChart: React.FC<PlantChartProps> = ({ rawData }) => {
           <ToggleButton value="monthly">월별</ToggleButton>
         </ToggleButtonGroup>
       </Box>
-      
+
       <ResponsiveContainer width="100%" height={400}>
         <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" />
           <XAxis dataKey="period" />
-          <YAxis label={{ value: '전력량 (kWh)', angle: -90, position: 'insideLeft' }} />
-          <Tooltip />
+          <YAxis label={{ value: '평균출력 (GW)', angle: -90, position: 'insideLeft' }} />
+          <Tooltip formatter={(value: number) => `${formatValue(value)} GW`} />
           <Legend />
-          {dataKeys.map((key, index) => (
-            <Line 
-              key={key} 
-              type="monotone" 
-              dataKey={key} 
-              stroke={colors[index % colors.length]} 
-              strokeWidth={2}
+          {dataKeys.map(key => (
+            <Line
+              key={key}
+              type="monotone"
+              dataKey={key}
+              stroke={getColor(key)}
               name={key.replace('_', ' ')}
+              strokeWidth={2}
+              dot={false}
             />
           ))}
         </LineChart>
       </ResponsiveContainer>
-      
+
       <Box sx={{ mt: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }} onClick={() => setShowTable(!showTable)}>
           <IconButton size="small">
@@ -110,7 +189,9 @@ const PlantChart: React.FC<PlantChartProps> = ({ rawData }) => {
                 <TableRow>
                   <TableCell>{aggregation === 'monthly' ? '월' : '시간'}</TableCell>
                   {dataKeys.map(key => (
-                    <TableCell key={key} align="right">{key.replace('_', ' ')}</TableCell>
+                    <TableCell key={key} align="right">
+                      {key.replace('_', ' ')} (GW)
+                    </TableCell>
                   ))}
                 </TableRow>
               </TableHead>
@@ -120,7 +201,7 @@ const PlantChart: React.FC<PlantChartProps> = ({ rawData }) => {
                     <TableCell>{row.period}</TableCell>
                     {dataKeys.map(key => (
                       <TableCell key={key} align="right">
-                        {((row as any)[key] || 0).toLocaleString('ko-KR', { maximumFractionDigits: 0 })}
+                        {formatValue(row[key])}
                       </TableCell>
                     ))}
                   </TableRow>

@@ -1,19 +1,34 @@
 import React from 'react';
-import { Card, CardContent, Typography, Box, LinearProgress } from '@mui/material';
+import { Card, CardContent, Typography, Box, LinearProgress, Tooltip } from '@mui/material';
 import { ProcessedData } from '../types';
 import BatteryChargingFullIcon from '@mui/icons-material/BatteryChargingFull';
 import SolarPowerIcon from '@mui/icons-material/SolarPower';
 import AirIcon from '@mui/icons-material/Air';
 import ElectricBoltIcon from '@mui/icons-material/ElectricBolt';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 
 interface SummaryCardsProps {
   processedData: ProcessedData[];
   essCapacity: number;
+  aggregatedData?: any;
 }
 
-const SummaryCards: React.FC<SummaryCardsProps> = ({ processedData, essCapacity }) => {
+const SummaryCards: React.FC<SummaryCardsProps> = ({ processedData, essCapacity, aggregatedData }) => {
   const calculateSummary = () => {
+    // aggregatedData가 있으면 연간 데이터 사용, 없으면 processedData 사용
+    if (aggregatedData && aggregatedData.summary) {
+      return {
+        totalSolar: aggregatedData.summary.totalSolar || 0,
+        totalWind: aggregatedData.summary.totalWind || 0,
+        totalSupply: (aggregatedData.summary.totalSolar || 0) + (aggregatedData.summary.totalWind || 0),
+        totalDemand: aggregatedData.summary.totalDemand || 0,
+        avgRE100Rate: aggregatedData.summary.avgRE100Rate || 0,
+        currentRE100Rate: processedData.length > 0 ? processedData[processedData.length - 1].re100Rate : 0
+      };
+    }
+    
+    // 기존 로직 (fallback)
     if (processedData.length === 0) {
       return {
         totalSolar: 0,
@@ -57,7 +72,7 @@ const SummaryCards: React.FC<SummaryCardsProps> = ({ processedData, essCapacity 
                 </Typography>
               </Box>
               <Typography variant="h4" sx={{ color: 'white', fontWeight: 'bold' }}>
-                {summary.totalSolar.toLocaleString('ko-KR', { maximumFractionDigits: 0 })} kWh
+                {summary.totalSolar.toLocaleString('ko-KR', { maximumFractionDigits: 1 })} GWh
               </Typography>
             </CardContent>
           </Card>
@@ -73,7 +88,7 @@ const SummaryCards: React.FC<SummaryCardsProps> = ({ processedData, essCapacity 
                 </Typography>
               </Box>
               <Typography variant="h4" sx={{ color: 'white', fontWeight: 'bold' }}>
-                {summary.totalWind.toLocaleString('ko-KR', { maximumFractionDigits: 0 })} kWh
+                {summary.totalWind.toLocaleString('ko-KR', { maximumFractionDigits: 1 })} GWh
               </Typography>
             </CardContent>
           </Card>
@@ -89,7 +104,7 @@ const SummaryCards: React.FC<SummaryCardsProps> = ({ processedData, essCapacity 
                 </Typography>
               </Box>
               <Typography variant="h4" sx={{ color: 'white', fontWeight: 'bold' }}>
-                {summary.totalSupply.toLocaleString('ko-KR', { maximumFractionDigits: 0 })} kWh
+                {summary.totalSupply.toLocaleString('ko-KR', { maximumFractionDigits: 1 })} GWh
               </Typography>
             </CardContent>
           </Card>
@@ -105,7 +120,7 @@ const SummaryCards: React.FC<SummaryCardsProps> = ({ processedData, essCapacity 
                 </Typography>
               </Box>
               <Typography variant="h4" sx={{ color: 'white', fontWeight: 'bold' }}>
-                {summary.totalDemand.toLocaleString('ko-KR', { maximumFractionDigits: 0 })} kWh
+                {summary.totalDemand.toLocaleString('ko-KR', { maximumFractionDigits: 1 })} GWh
               </Typography>
             </CardContent>
           </Card>
@@ -119,17 +134,27 @@ const SummaryCards: React.FC<SummaryCardsProps> = ({ processedData, essCapacity 
               </Typography>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
                 <Box>
-                  <Typography variant="body2" color="text.secondary">
-                    현재 달성률
-                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <Typography variant="body2" color="text.secondary">
+                      현재 달성률
+                    </Typography>
+                    <Tooltip title="가장 최근 시간대의 재생에너지 공급량을 전력 수요량으로 나눈 비율" arrow>
+                      <HelpOutlineIcon sx={{ fontSize: 14, ml: 0.5, color: 'text.secondary' }} />
+                    </Tooltip>
+                  </Box>
                   <Typography variant="h4" color="primary">
                     {summary.currentRE100Rate.toFixed(1)}%
                   </Typography>
                 </Box>
                 <Box>
-                  <Typography variant="body2" color="text.secondary">
-                    평균 달성률
-                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <Typography variant="body2" color="text.secondary">
+                      평균 달성률
+                    </Typography>
+                    <Tooltip title="전체 기간 동안의 재생에너지 총 공급량을 총 전력 수요량으로 나눈 평균 비율" arrow>
+                      <HelpOutlineIcon sx={{ fontSize: 14, ml: 0.5, color: 'text.secondary' }} />
+                    </Tooltip>
+                  </Box>
                   <Typography variant="h4">
                     {summary.avgRE100Rate.toFixed(1)}%
                   </Typography>
@@ -157,7 +182,7 @@ const SummaryCards: React.FC<SummaryCardsProps> = ({ processedData, essCapacity 
                 </Typography>
               </Box>
               <Typography variant="h3" sx={{ mb: 2, fontWeight: 'bold' }}>
-                {(essCapacity * 1000).toLocaleString('ko-KR', { maximumFractionDigits: 0 })} kW
+                {essCapacity.toLocaleString('ko-KR', { maximumFractionDigits: 1 })} GWh
               </Typography>
               <Typography variant="body1">
                 공급과 수요의 불균형을 ESS로 보완할 수 있습니다.

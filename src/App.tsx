@@ -7,12 +7,6 @@ import {
   Box,
   Drawer,
   IconButton,
-  FormControl,
-  InputLabel,
-  Select,
-  MenuItem,
-  SelectChangeEvent,
-  Chip,
   CssBaseline,
   ThemeProvider,
   createTheme
@@ -22,15 +16,18 @@ import { CSVRow, WideFormatData, ProcessedData, MonthlyData } from './types';
 import CSVUploader from './components/CSVUploader';
 import TimeSeriesChart from './components/TimeSeriesChart';
 import MonthlyChart from './components/MonthlyChart';
-import PivotChart from './components/PivotChart';
 import PlantChart from './components/PlantChart';
+import PowerGenerationChart from './components/PowerGenerationChart';
+import CompanyUsageChart from './components/CompanyUsageChart';
+import CompanyDemandChart from './components/CompanyDemandChart';
 import SummaryCards from './components/SummaryCards';
 import {
   convertToWideFormat,
   processData,
   calculateMonthlyData,
   calculateESSCapacity,
-  getUniqueCompanies
+  getUniqueCompanies,
+  updateAggregatedData
 } from './utils/dataProcessing';
 
 const theme = createTheme({
@@ -52,36 +49,60 @@ function App() {
   const [wideData, setWideData] = useState<WideFormatData[]>([]);
   const [processedData, setProcessedData] = useState<ProcessedData[]>([]);
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([]);
-  const [selectedCompanies, setSelectedCompanies] = useState<string[]>([]);
   const [companies, setCompanies] = useState<string[]>([]);
   const [essCapacity, setEssCapacity] = useState<number>(0);
+  const [aggregatedData, setAggregatedData] = useState<any>(null);
 
-  const handleDataLoaded = (data: CSVRow[]) => {
-    setRawData(data);
-    const wide = convertToWideFormat(data);
-    setWideData(wide);
+  const handleDataLoaded = (data: CSVRow[], aggregated?: any, append?: boolean) => {
+    let finalData = data;
     
-    const uniqueCompanies = getUniqueCompanies(data);
-    setCompanies(uniqueCompanies);
+    // append가 true면 기존 데이터에 추가
+    if (append && rawData.length > 0) {
+      finalData = [...rawData, ...data];
+    }
     
-    const processed = processData(wide, []);
-    setProcessedData(processed);
-    setMonthlyData(calculateMonthlyData(processed));
-    setEssCapacity(calculateESSCapacity(processed));
+    setRawData(finalData);
+    
+    if (aggregated && !append) {
+      // 집계된 데이터 사용 (초기 로드 시에만)
+      setAggregatedData(aggregated);
+      setProcessedData(aggregated.hourlyJan1 || aggregated.hourlyData || []);
+      setMonthlyData(aggregated.monthlyData || []);
+      setEssCapacity(aggregated.essCapacity || 0);
+      
+      // 기업 목록 설정
+      const uniqueCompanies = aggregated.companyData ? 
+        aggregated.companyData.map((c: any) => c.name) : 
+        aggregated.pieData?.companies?.map((c: any) => c.name) || [];
+      setCompanies(uniqueCompanies);
+    } else {
+      // 기존 방식대로 처리 (CSV 추가 시에도 처리)
+      const wide = convertToWideFormat(finalData);
+      setWideData(wide);
+      
+      const uniqueCompanies = getUniqueCompanies(finalData);
+      setCompanies(uniqueCompanies);
+      
+      const processed = processData(wide, []);
+      setProcessedData(processed);
+      setMonthlyData(calculateMonthlyData(processed));
+      setEssCapacity(calculateESSCapacity(processed));
+      
+      // append 모드일 때는 aggregatedData를 재계산
+      if (append && aggregatedData) {
+        // 기존 aggregatedData를 업데이트 - 새로 추가된 데이터만 전달
+        const updatedAggregated = updateAggregatedData(aggregatedData, data);
+        setAggregatedData(updatedAggregated);
+        // 업데이트된 월별 데이터도 설정
+        setMonthlyData(updatedAggregated.monthlyData || []);
+      } else if (!append) {
+        setAggregatedData(null);
+      }
+    }
     
     setDrawerOpen(false);
   };
 
-  const handleCompanyChange = (event: SelectChangeEvent<string[]>) => {
-    const value = event.target.value;
-    const selected = typeof value === 'string' ? value.split(',') : value;
-    setSelectedCompanies(selected);
-    
-    const processed = processData(wideData, selected);
-    setProcessedData(processed);
-    setMonthlyData(calculateMonthlyData(processed));
-    setEssCapacity(calculateESSCapacity(processed));
-  };
 
   const toggleDrawer = () => {
     setDrawerOpen(!drawerOpen);
@@ -103,7 +124,7 @@ function App() {
               <MenuIcon />
             </IconButton>
             <Typography variant="h6" noWrap component="div">
-              새만금 산업단지 24/7 RE100 모니터링 시스템
+              새만금 산업단지 24/7 RE100 분석 프로그램
             </Typography>
           </Toolbar>
         </AppBar>
@@ -124,30 +145,6 @@ function App() {
         >
           <Box sx={{ p: 2 }}>
             <CSVUploader onDataLoaded={handleDataLoaded} />
-            
-            {companies.length > 0 && (
-              <FormControl fullWidth sx={{ mt: 3 }}>
-                <InputLabel>기업 선택</InputLabel>
-                <Select
-                  multiple
-                  value={selectedCompanies}
-                  onChange={handleCompanyChange}
-                  renderValue={(selected) => (
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                      {selected.map((value) => (
-                        <Chip key={value} label={value} size="small" />
-                      ))}
-                    </Box>
-                  )}
-                >
-                  {companies.map((company) => (
-                    <MenuItem key={company} value={company}>
-                      {company}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            )}
           </Box>
         </Drawer>
         
@@ -155,22 +152,33 @@ function App() {
           <Container maxWidth="xl">
             {processedData.length > 0 ? (
               <>
-                <SummaryCards processedData={processedData} essCapacity={essCapacity} />
+                <SummaryCards processedData={processedData} essCapacity={essCapacity} aggregatedData={aggregatedData} />
                 
                 <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap' }}>
                   <Box sx={{ flex: 1, minWidth: 600 }}>
-                    <TimeSeriesChart data={processedData} />
+                    <TimeSeriesChart data={processedData} aggregatedData={aggregatedData} />
                   </Box>
                   <Box sx={{ flex: 1, minWidth: 600 }}>
                     <MonthlyChart data={monthlyData} />
                   </Box>
                 </Box>
                 
-                <Box sx={{ mb: 2 }}>
-                  <PivotChart rawData={rawData} wideData={wideData} />
-                </Box>
+                {aggregatedData && (
+                  <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap' }}>
+                    <Box sx={{ flex: 1, minWidth: 500 }}>
+                      <PowerGenerationChart aggregatedData={aggregatedData} />
+                    </Box>
+                    <Box sx={{ flex: 1, minWidth: 500 }}>
+                      <CompanyUsageChart aggregatedData={aggregatedData} />
+                    </Box>
+                  </Box>
+                )}
                 
-                <PlantChart rawData={rawData} />
+                <PlantChart rawData={rawData} aggregatedData={aggregatedData} />
+                
+                <Box sx={{ mt: 2 }}>
+                  <CompanyDemandChart rawData={rawData} aggregatedData={aggregatedData} />
+                </Box>
               </>
             ) : (
               <Box sx={{ 
