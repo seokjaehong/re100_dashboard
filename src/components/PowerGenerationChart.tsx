@@ -56,7 +56,7 @@ const PowerGenerationChart: React.FC<PowerGenerationChartProps> = ({ aggregatedD
     <Paper sx={{ p: 2, width: '100%' }}>
       <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2} sx={{ mb: 2 }}>
         <Typography variant="h6">
-          발전소별 발전량 (월별)
+          발전소별 발전량
         </Typography>
         <FormControl size="small" sx={{ minWidth: 120 }}>
           <InputLabel>기간</InputLabel>

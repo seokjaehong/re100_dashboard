@@ -63,28 +63,23 @@ function App() {
     
     setRawData(finalData);
     
+    // 항상 원본 데이터 처리
+    const wide = convertToWideFormat(finalData);
+    setWideData(wide);
+    
+    const uniqueCompanies = getUniqueCompanies(finalData);
+    setCompanies(uniqueCompanies);
+    
+    const processed = processData(wide, []);
+    setProcessedData(processed);
+    
     if (aggregated && !append) {
-      // 집계된 데이터 사용 (초기 로드 시에만)
+      // 집계된 데이터가 있으면 월별 데이터와 ESS는 집계된 것 사용
       setAggregatedData(aggregated);
-      setProcessedData(aggregated.hourlyJan1 || aggregated.hourlyData || []);
-      setMonthlyData(aggregated.monthlyData || []);
-      setEssCapacity(aggregated.essCapacity || 0);
-      
-      // 기업 목록 설정
-      const uniqueCompanies = aggregated.companyData ? 
-        aggregated.companyData.map((c: any) => c.name) : 
-        aggregated.pieData?.companies?.map((c: any) => c.name) || [];
-      setCompanies(uniqueCompanies);
+      setMonthlyData(aggregated.monthlyData || calculateMonthlyData(processed));
+      setEssCapacity(aggregated.essCapacity || calculateESSCapacity(processed));
     } else {
-      // 기존 방식대로 처리 (CSV 추가 시에도 처리)
-      const wide = convertToWideFormat(finalData);
-      setWideData(wide);
-      
-      const uniqueCompanies = getUniqueCompanies(finalData);
-      setCompanies(uniqueCompanies);
-      
-      const processed = processData(wide, []);
-      setProcessedData(processed);
+      // 집계 데이터가 없거나 append 모드일 때
       setMonthlyData(calculateMonthlyData(processed));
       setEssCapacity(calculateESSCapacity(processed));
       
@@ -94,9 +89,9 @@ function App() {
         const updatedAggregated = updateAggregatedData(aggregatedData, data);
         setAggregatedData(updatedAggregated);
         // 업데이트된 월별 데이터도 설정
-        setMonthlyData(updatedAggregated.monthlyData || []);
+        setMonthlyData(updatedAggregated.monthlyData || calculateMonthlyData(processed));
       } else if (!append) {
-        setAggregatedData(null);
+        setAggregatedData(aggregated || null);
       }
     }
     

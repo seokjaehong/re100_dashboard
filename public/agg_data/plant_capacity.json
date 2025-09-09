@@ -1,0 +1,30 @@
+{
+  "solar": {
+    "육상태양광": {
+      "capacity_gw": 0.3,
+      "generation_gwh": 202.04
+    },
+    "수상태양광1": {
+      "capacity_gw": 1.2,
+      "generation_gwh": 786.55
+    },
+    "수상태양광2": {
+      "capacity_gw": 0.9,
+      "generation_gwh": 551.54
+    }
+  },
+  "wind": {
+    "군산해상풍력": {
+      "capacity_gw": 1.5,
+      "generation_gwh": 1410.11
+    },
+    "새만금해상풍력": {
+      "capacity_gw": 0.1,
+      "generation_gwh": 97.93
+    },
+    "서남해해상풍력": {
+      "capacity_gw": 2.5,
+      "generation_gwh": 2288.91
+    }
+  }
+}

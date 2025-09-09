@@ -17,71 +17,99 @@ const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ data, aggregatedData 
   const [selectedMonth, setSelectedMonth] = useState<string>('01'); // 기본값 1월
   const [selectedWeek, setSelectedWeek] = useState<string>('1'); // 기본값 1주차
   const [filteredData, setFilteredData] = useState<any[]>([]);
-  const [weekOptions, setWeekOptions] = useState<string[]>(['1', '2', '3', '4', '5']);
+  const [weeklyData, setWeeklyData] = useState<any>(null);
+  const [weekOptions, setWeekOptions] = useState<{value: string, label: string}[]>([]);
   
   useEffect(() => {
-    // 2024년 전체 데이터 로드
-    fetch('/sample_data/hourly_data_2024.json')
+    // weekly_data.json 로드
+    fetch('/agg_data/weekly_data.json')
       .then(res => res.json())
-      .then(hourlyData => {
-        const formatted = hourlyData.map((item: any) => {
-          const date = new Date(item.datetime);
-          const day = date.getDate();
-          const week = Math.ceil(day / 7);
-          
-          return {
-            ...item,
-            time: item.datetime.substring(5, 16), // "2024-01-01 00:00" -> "01-01 00:00"
-            month: item.datetime.substring(5, 7), // 월 추출
-            week: week.toString(), // 주차 계산
-            negativeDemand: -(item.demand || 0),
-            externalPower: Math.abs(item.externalPower || 0) // Take absolute value
-          };
-        });
-        setFullYearData(formatted);
+      .then(weeklyDataJson => {
+        setWeeklyData(weeklyDataJson);
+        
+        // 1월 데이터로 초기화
+        const month01Data = weeklyDataJson['1월'];
+        if (month01Data && Array.isArray(month01Data)) {
+          setSelectedWeek('1');
+          const weekOptions = month01Data.map((week: any) => ({
+            value: week.week.toString(),
+            label: `${week.week}주차 (${week.start} ~ ${week.end})`
+          }));
+          setWeekOptions(weekOptions);
+        }
       })
-      .catch(() => {
-        // fallback to provided data
-        const formatted = data.map((item: any) => {
-          const dateStr = item.datetime.includes('T') ? item.datetime : item.datetime + 'T00:00:00';
-          const date = new Date(dateStr);
-          const day = date.getDate();
-          const week = Math.ceil(day / 7);
-          
-          return {
-            ...item,
-            time: item.datetime.includes('T') ? 
-              format(parseISO(item.datetime), 'MM/dd HH:mm') : 
-              item.datetime.substring(5, 16),
-            month: item.datetime.includes('T') ? 
-              format(parseISO(item.datetime), 'MM') : 
-              item.datetime.substring(5, 7),
-            week: week.toString(),
-            negativeDemand: item.negativeDemand || -(item.demand || 0)
-          };
-        });
-        setFullYearData(formatted);
+      .catch(err => {
+        console.error('weekly_data.json 로드 실패:', err);
+        // 기본 주차 옵션 설정
+        setWeekOptions([
+          {value: '1', label: '1주차'},
+          {value: '2', label: '2주차'},
+          {value: '3', label: '3주차'},
+          {value: '4', label: '4주차'},
+          {value: '5', label: '5주차'}
+        ]);
       });
+
+    // fallback to provided data for chart display
+    const formatted = data.map((item: any) => {
+      const dateStr = item.datetime.includes('T') ? item.datetime : item.datetime + 'T00:00:00';
+      return {
+        ...item,
+        time: item.datetime.includes('T') ? 
+          format(parseISO(item.datetime), 'MM/dd HH:mm') : 
+          item.datetime.substring(5, 16),
+        negativeDemand: item.negativeDemand || -(item.demand || 0)
+      };
+    });
+    setFullYearData(formatted);
   }, [data]);
 
   useEffect(() => {
-    // 선택된 월과 주차의 데이터만 필터링
-    const monthWeekData = fullYearData.filter(item => 
-      item.month === selectedMonth && item.week === selectedWeek
-    );
-    setFilteredData(monthWeekData);
-    
     // 선택된 월에 따라 주차 옵션 업데이트
-    const monthData = fullYearData.filter(item => item.month === selectedMonth);
-    const uniqueWeeks = Array.from(new Set(monthData.map(item => item.week))).sort();
-    if (uniqueWeeks.length > 0) {
-      setWeekOptions(uniqueWeeks);
-      // 선택된 주차가 새 월에 없으면 첫 번째 주차로 리셋
-      if (!uniqueWeeks.includes(selectedWeek)) {
-        setSelectedWeek(uniqueWeeks[0]);
+    const monthNames: {[key: string]: string} = {
+      '01': '1월', '02': '2월', '03': '3월', '04': '4월', '05': '5월', '06': '6월',
+      '07': '7월', '08': '8월', '09': '9월', '10': '10월', '11': '11월', '12': '12월'
+    };
+    
+    const monthName = monthNames[selectedMonth];
+    
+    if (weeklyData && monthName && weeklyData[monthName]) {
+      const monthData = weeklyData[monthName];
+      if (Array.isArray(monthData)) {
+        const weekOptions = monthData.map((week: any) => ({
+          value: week.week.toString(),
+          label: `${week.week}주차 (${week.start} ~ ${week.end})`
+        }));
+        setWeekOptions(weekOptions);
+        
+        // 선택된 주차가 새 월에 없으면 첫 번째 주차로 리셋
+        if (!weekOptions.some((option: any) => option.value === selectedWeek)) {
+          setSelectedWeek('1');
+        }
+        
+        // 선택된 주차의 날짜 범위 찾기
+        const selectedWeekData = monthData.find((week: any) => week.week.toString() === selectedWeek);
+        
+        if (selectedWeekData && fullYearData.length > 0) {
+          // 날짜 범위에 따라 데이터 필터링
+          const startDate = selectedWeekData.start;
+          const endDate = selectedWeekData.end;
+          
+          const filtered = fullYearData.filter((item: any) => {
+            // datetime이 YYYY-MM-DD 형식인지 확인
+            const dateStr = item.datetime ? item.datetime.substring(0, 10) : '';
+            return dateStr >= startDate && dateStr <= endDate;
+          });
+          
+          setFilteredData(filtered.length > 0 ? filtered : fullYearData);
+        } else {
+          setFilteredData(fullYearData);
+        }
       }
+    } else {
+      setFilteredData(fullYearData);
     }
-  }, [fullYearData, selectedMonth, selectedWeek]);
+  }, [weeklyData, selectedMonth, selectedWeek, fullYearData]);
 
   const handleMonthChange = (event: SelectChangeEvent) => {
     setSelectedMonth(event.target.value);
@@ -103,7 +131,7 @@ const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ data, aggregatedData 
     <Paper sx={{ p: 2, width: '100%' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
         <Typography variant="h6">
-          시간대별 RE100 달성 현황 (2024년)
+          시간대별 RE100 달성 현황
         </Typography>
         <Box sx={{ display: 'flex', gap: 2 }}>
           <FormControl size="small" sx={{ minWidth: 100 }}>
@@ -134,8 +162,8 @@ const TimeSeriesChart: React.FC<TimeSeriesChartProps> = ({ data, aggregatedData 
               onChange={handleWeekChange}
               label="주차 선택"
             >
-              {weekOptions.map(week => (
-                <MenuItem key={week} value={week}>{week}주차</MenuItem>
+              {weekOptions.map((week: any) => (
+                <MenuItem key={week.value} value={week.value}>{week.label}</MenuItem>
               ))}
             </Select>
           </FormControl>

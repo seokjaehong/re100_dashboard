@@ -1,0 +1,10 @@
+{
+  "annual_totals": {
+    "solar": 1540.13,
+    "wind": 3796.95,
+    "supply": 5337.08,
+    "demand": 15046.49,
+    "re100_rate": 35.47
+  },
+  "note": "Original values from integrated CSV (no 10% adjustment)"
+}

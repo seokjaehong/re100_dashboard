@@ -40,11 +40,17 @@ const CompanyDemandChart: React.FC<CompanyDemandChartProps> = ({ rawData, aggreg
     // 초기값: 가나다순 상위 10개 기업
     if (selectedCompanies.length === 0 && sortedCompanies.length > 0) {
       setSelectedCompanies(sortedCompanies.slice(0, 10));
+      console.log('Selected companies:', sortedCompanies.slice(0, 10));
     }
+    
+    // 디버깅 로그
+    console.log('CompanyDemandChart - Raw data count:', rawData?.length || 0);
+    console.log('CompanyDemandChart - Company monthly data:', aggregatedData?.companyMonthly?.length || 0);
+    console.log('CompanyDemandChart - All companies:', sortedCompanies);
   }, [rawData, aggregatedData]);
 
   useEffect(() => {
-    if (aggregatedData && aggregatedData.companyMonthly) {
+    if (aggregatedData && aggregatedData.companyMonthly && selectedCompanies.length > 0) {
       // 월별 데이터 재구성 (평균값 계산)
       const monthlyData: { [key: string]: { [key: string]: { total: number; days: number } } } = {};
       const daysInMonth: { [key: string]: number } = {
@@ -84,23 +90,28 @@ const CompanyDemandChart: React.FC<CompanyDemandChartProps> = ({ rawData, aggreg
         });
       }
       
-      // 평균값 계산하여 배열로 변환
-      const avgMonthlyData = Object.entries(monthlyData).map(([month, companies]) => {
-        const avgData: any = { period: month };
+      // 월별 합계 데이터로 변환
+      const monthlyTotalData = Object.entries(monthlyData).map(([month, companies]) => {
+        const totalData: any = { period: month };
         Object.entries(companies).forEach(([companyKey, data]) => {
-          // 월 총 사용량을 (일수 * 24시간)으로 나누어 평균 시간당 사용량(GWh) 계산
-          avgData[companyKey] = data.total / (data.days * 24);
+          // 월별 합계 사용량(GWh) - 이미 value에 합계가 들어있음
+          totalData[companyKey] = data.total;
         });
-        return avgData;
+        return totalData;
       });
       
       // 정렬
-      const sortedData = avgMonthlyData.sort((a: any, b: any) => {
+      const sortedData = monthlyTotalData.sort((a: any, b: any) => {
         const monthOrder = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'];
         return monthOrder.indexOf(a.period) - monthOrder.indexOf(b.period);
       });
       
       setMonthlyChartData(sortedData);
+      console.log('CompanyDemandChart - Monthly chart data updated:', sortedData.length, 'entries');
+      if (sortedData.length > 0) {
+        console.log('CompanyDemandChart - Chart data keys:', Object.keys(sortedData[0]));
+        console.log('CompanyDemandChart - First data point:', sortedData[0]);
+      }
     }
   }, [aggregatedData, selectedCompanies]);
 
@@ -169,11 +180,19 @@ const CompanyDemandChart: React.FC<CompanyDemandChartProps> = ({ rawData, aggreg
     return value ? value.toFixed(3) : '0';
   };
 
+  console.log('CompanyDemandChart - Rendering with:', {
+    aggregation,
+    chartDataLength: chartData.length,
+    dataKeys: dataKeys,
+    selectedCompaniesCount: selectedCompanies.length,
+    hasAggregatedData: !!aggregatedData
+  });
+
   return (
     <Paper sx={{ p: 2, width: '100%' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 2 }}>
         <Typography variant="h6">
-          기업별 전력사용량 현황
+          기업별 {aggregation === 'monthly' ? '월별 합계' : '시간대별 평균'} 전력사용량 현황
         </Typography>
         <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
           <FormControl size="small" sx={{ minWidth: 300 }}>
@@ -213,6 +232,15 @@ const CompanyDemandChart: React.FC<CompanyDemandChartProps> = ({ rawData, aggreg
         </Box>
       </Box>
 
+      {chartData.length === 0 ? (
+        <Box sx={{ height: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Typography color="textSecondary">
+            {selectedCompanies.length === 0 
+              ? '기업을 선택해주세요.'
+              : '데이터를 로딩 중입니다... "샘플 데이터 로드" 버튼을 클릭해주세요.'}
+          </Typography>
+        </Box>
+      ) : (
       <ResponsiveContainer width="100%" height={400}>
         <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" />
@@ -233,7 +261,9 @@ const CompanyDemandChart: React.FC<CompanyDemandChartProps> = ({ rawData, aggreg
           ))}
         </LineChart>
       </ResponsiveContainer>
+      )}
 
+      {chartData.length > 0 && (
       <Box sx={{ mt: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }} onClick={() => setShowTable(!showTable)}>
           <IconButton size="small">
@@ -273,6 +303,7 @@ const CompanyDemandChart: React.FC<CompanyDemandChartProps> = ({ rawData, aggreg
           </TableContainer>
         </Collapse>
       </Box>
+      )}
     </Paper>
   );
 };

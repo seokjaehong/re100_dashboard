@@ -1,0 +1,7 @@
+plant_name,type,filename
+육상태양광,solar,solar_plant1.csv
+수상태양광1,solar,solar_plant2.csv
+수상태양광2,solar,solar_plant3.csv
+군산해상풍력,wind,wind_plant1.csv
+새만금해상풍력,wind,wind_plant2.csv
+서남해해상풍력,wind,wind_plant3.csv

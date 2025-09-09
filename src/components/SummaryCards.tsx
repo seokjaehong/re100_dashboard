@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, Typography, Box, LinearProgress, Tooltip } from '@mui/material';
 import { ProcessedData } from '../types';
 import BatteryChargingFullIcon from '@mui/icons-material/BatteryChargingFull';
@@ -15,6 +15,24 @@ interface SummaryCardsProps {
 }
 
 const SummaryCards: React.FC<SummaryCardsProps> = ({ processedData, essCapacity, aggregatedData }) => {
+  const [plantCapacity, setPlantCapacity] = useState<any>(null);
+
+  useEffect(() => {
+    const loadPlantCapacity = async () => {
+      try {
+        const response = await fetch('/agg_data/plant_capacity.json');
+        if (response.ok) {
+          const data = await response.json();
+          setPlantCapacity(data);
+        }
+      } catch (error) {
+        console.error('발전소 용량 데이터 로드 실패:', error);
+      }
+    };
+
+    loadPlantCapacity();
+  }, []);
+
   const calculateSummary = () => {
     // aggregatedData가 있으면 연간 데이터 사용, 없으면 processedData 사용
     if (aggregatedData && aggregatedData.summary) {
@@ -59,6 +77,17 @@ const SummaryCards: React.FC<SummaryCardsProps> = ({ processedData, essCapacity,
 
   const summary = calculateSummary();
 
+  const createPlantTooltip = (plantType: 'solar' | 'wind') => {
+    if (!plantCapacity || !plantCapacity[plantType]) return '';
+    
+    const plants = plantCapacity[plantType];
+    const entries = Object.entries(plants);
+    
+    return entries.map(([plantName, data]: [string, any]) => 
+      `${plantName}: ${data.capacity_gw.toFixed(2)} GW / ${data.generation_gwh.toFixed(1)} GWh`
+    ).join('\n');
+  };
+
   return (
     <Box sx={{ mb: 3 }}>
       <Typography variant="h5" gutterBottom sx={{ fontWeight: 'bold', mb: 2 }}>
@@ -66,35 +95,77 @@ const SummaryCards: React.FC<SummaryCardsProps> = ({ processedData, essCapacity,
       </Typography>
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
         <Box sx={{ flex: '1 1 calc(25% - 16px)', minWidth: 200 }}>
-          <Card sx={{ background: 'linear-gradient(135deg, #FFA726 30%, #FFB74D 90%)' }}>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                <SolarPowerIcon sx={{ color: 'white', mr: 1 }} />
-                <Typography variant="h6" sx={{ color: 'white' }}>
-                  태양광 발전
+          <Tooltip 
+            title={
+              <Box sx={{ whiteSpace: 'pre-line', fontSize: '0.875rem' }}>
+                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 'bold' }}>
+                  태양광 발전소별 상세정보:
                 </Typography>
+                {createPlantTooltip('solar')}
               </Box>
-              <Typography variant="h4" sx={{ color: 'white', fontWeight: 'bold' }}>
-                {summary.totalSolar.toLocaleString('ko-KR', { maximumFractionDigits: 1 })} GWh
-              </Typography>
-            </CardContent>
-          </Card>
+            }
+            arrow
+            placement="top"
+          >
+            <Card sx={{ 
+              background: 'linear-gradient(135deg, #FFA726 30%, #FFB74D 90%)',
+              cursor: 'pointer',
+              '&:hover': {
+                transform: 'translateY(-2px)',
+                boxShadow: '0 4px 20px rgba(255, 167, 38, 0.4)'
+              },
+              transition: 'transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out'
+            }}>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                  <SolarPowerIcon sx={{ color: 'white', mr: 1 }} />
+                  <Typography variant="h6" sx={{ color: 'white' }}>
+                    태양광 발전
+                  </Typography>
+                </Box>
+                <Typography variant="h4" sx={{ color: 'white', fontWeight: 'bold' }}>
+                  {summary.totalSolar.toLocaleString('ko-KR', { maximumFractionDigits: 1 })} GWh
+                </Typography>
+              </CardContent>
+            </Card>
+          </Tooltip>
         </Box>
 
         <Box sx={{ flex: '1 1 calc(25% - 16px)', minWidth: 200 }}>
-          <Card sx={{ background: 'linear-gradient(135deg, #42A5F5 30%, #64B5F6 90%)' }}>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                <AirIcon sx={{ color: 'white', mr: 1 }} />
-                <Typography variant="h6" sx={{ color: 'white' }}>
-                  풍력 발전
+          <Tooltip 
+            title={
+              <Box sx={{ whiteSpace: 'pre-line', fontSize: '0.875rem' }}>
+                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 'bold' }}>
+                  풍력 발전소별 상세정보:
                 </Typography>
+                {createPlantTooltip('wind')}
               </Box>
-              <Typography variant="h4" sx={{ color: 'white', fontWeight: 'bold' }}>
-                {summary.totalWind.toLocaleString('ko-KR', { maximumFractionDigits: 1 })} GWh
-              </Typography>
-            </CardContent>
-          </Card>
+            }
+            arrow
+            placement="top"
+          >
+            <Card sx={{ 
+              background: 'linear-gradient(135deg, #42A5F5 30%, #64B5F6 90%)',
+              cursor: 'pointer',
+              '&:hover': {
+                transform: 'translateY(-2px)',
+                boxShadow: '0 4px 20px rgba(66, 165, 245, 0.4)'
+              },
+              transition: 'transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out'
+            }}>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                  <AirIcon sx={{ color: 'white', mr: 1 }} />
+                  <Typography variant="h6" sx={{ color: 'white' }}>
+                    풍력 발전
+                  </Typography>
+                </Box>
+                <Typography variant="h4" sx={{ color: 'white', fontWeight: 'bold' }}>
+                  {summary.totalWind.toLocaleString('ko-KR', { maximumFractionDigits: 1 })} GWh
+                </Typography>
+              </CardContent>
+            </Card>
+          </Tooltip>
         </Box>
 
         <Box sx={{ flex: '1 1 calc(25% - 16px)', minWidth: 200 }}>

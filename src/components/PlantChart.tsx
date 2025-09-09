@@ -15,127 +15,186 @@ const PlantChart: React.FC<PlantChartProps> = ({ rawData, aggregatedData }) => {
   const [aggregation, setAggregation] = useState<'hourly' | 'monthly'>('hourly');
   const [showTable, setShowTable] = useState(false);
   const [monthlyChartData, setMonthlyChartData] = useState<any[]>([]);
+  const [hourlyChartData, setHourlyChartData] = useState<any[]>([]);
 
   useEffect(() => {
-    // aggregatedData가 있으면 사용, 없으면 rawData에서 계산
-    if ((aggregatedData && aggregatedData.plantMonthly) || (rawData && rawData.length > 0)) {
-      // 월별 데이터 재구성 (평균값 계산)
-      const monthlyData: { [key: string]: { [key: string]: { total: number; days: number } } } = {};
-      const daysInMonth: { [key: string]: number } = {
-        '1월': 31, '2월': 29, '3월': 31, '4월': 30, '5월': 31, '6월': 30,
-        '7월': 31, '8월': 31, '9월': 30, '10월': 31, '11월': 30, '12월': 31
-      };
-      
-      if (aggregatedData && aggregatedData.plantMonthly) {
-        aggregatedData.plantMonthly.forEach((item: any) => {
-          if (!monthlyData[item.month]) {
-            monthlyData[item.month] = {};
-          }
-          // 타입별로만 집계 (개별 발전소 구분 제거)
-          const key = item.type;
-          const days = daysInMonth[item.month] || 30;
-          if (!monthlyData[item.month][key]) {
-            monthlyData[item.month][key] = { total: 0, days: days };
-          }
-          monthlyData[item.month][key].total += item.value;
+    // monthly_aggregated_original.json에서 개별 발전소 데이터 로드
+    console.log('PlantChart - Starting to fetch monthly data...');
+    fetch('/agg_data/monthly_aggregated_original.json')
+      .then(res => {
+        console.log('PlantChart - Fetch response status:', res.status);
+        return res.json();
+      })
+      .then(monthlyAggregated => {
+        console.log('PlantChart - Monthly aggregated data received:', monthlyAggregated);
+        // 월별 데이터 재구성 (평균값 계산)
+        const monthlyData: { [key: string]: { [key: string]: { total: number; days: number } } } = {};
+        const daysInMonth: { [key: string]: number } = {
+          '1월': 31, '2월': 29, '3월': 31, '4월': 30, '5월': 31, '6월': 30,
+          '7월': 31, '8월': 31, '9월': 30, '10월': 31, '11월': 30, '12월': 31
+        };
+        
+        // 태양광 발전소별 데이터
+        if (monthlyAggregated.solar) {
+          Object.entries(monthlyAggregated.solar).forEach(([plantName, plantData]: [string, any]) => {
+            if (plantName === 'total') return; // total 데이터는 제외
+            
+            Object.entries(plantData).forEach(([monthKey, value]: [string, any]) => {
+              const monthLabel = monthKey.substring(5) === '01' ? '1월' : 
+                                 monthKey.substring(5) === '02' ? '2월' :
+                                 monthKey.substring(5) === '03' ? '3월' :
+                                 monthKey.substring(5) === '04' ? '4월' :
+                                 monthKey.substring(5) === '05' ? '5월' :
+                                 monthKey.substring(5) === '06' ? '6월' :
+                                 monthKey.substring(5) === '07' ? '7월' :
+                                 monthKey.substring(5) === '08' ? '8월' :
+                                 monthKey.substring(5) === '09' ? '9월' :
+                                 monthKey.substring(5) === '10' ? '10월' :
+                                 monthKey.substring(5) === '11' ? '11월' : '12월';
+              
+              if (!monthlyData[monthLabel]) {
+                monthlyData[monthLabel] = {};
+              }
+              
+              const days = daysInMonth[monthLabel] || 30;
+              monthlyData[monthLabel][plantName] = { total: value, days: days }; // 원본 값 사용
+            });
+          });
+        }
+        
+        // 풍력 발전소별 데이터
+        if (monthlyAggregated.wind) {
+          Object.entries(monthlyAggregated.wind).forEach(([plantName, plantData]: [string, any]) => {
+            if (plantName === 'total') return; // total 데이터는 제외
+            
+            Object.entries(plantData).forEach(([monthKey, value]: [string, any]) => {
+              const monthLabel = monthKey.substring(5) === '01' ? '1월' : 
+                                 monthKey.substring(5) === '02' ? '2월' :
+                                 monthKey.substring(5) === '03' ? '3월' :
+                                 monthKey.substring(5) === '04' ? '4월' :
+                                 monthKey.substring(5) === '05' ? '5월' :
+                                 monthKey.substring(5) === '06' ? '6월' :
+                                 monthKey.substring(5) === '07' ? '7월' :
+                                 monthKey.substring(5) === '08' ? '8월' :
+                                 monthKey.substring(5) === '09' ? '9월' :
+                                 monthKey.substring(5) === '10' ? '10월' :
+                                 monthKey.substring(5) === '11' ? '11월' : '12월';
+              
+              if (!monthlyData[monthLabel]) {
+                monthlyData[monthLabel] = {};
+              }
+              
+              const days = daysInMonth[monthLabel] || 30;
+              monthlyData[monthLabel][plantName] = { total: value, days: days }; // 원본 값 사용
+            });
+          });
+        }
+        
+        // 평균값 계산하여 배열로 변환
+        const avgMonthlyData = Object.entries(monthlyData).map(([month, plants]) => {
+          const avgData: any = { period: month };
+          Object.entries(plants).forEach(([plantKey, data]) => {
+            // 월 총 발전량을 (일수 * 24시간)으로 나누어 평균 시간당 출력(GW) 계산
+            avgData[plantKey] = data.total / (data.days * 24);
+          });
+          return avgData;
         });
-      } else if (rawData && rawData.length > 0) {
-        // rawData에서 직접 월별 데이터 계산
-        const plantData = rawData.filter(row => row.type === 'solar' || row.type === 'wind');
-        plantData.forEach(row => {
-          const date = parseISO(row.datetime);
-          const monthKey = `${date.getMonth() + 1}월`;
-          
-          if (!monthlyData[monthKey]) {
-            monthlyData[monthKey] = {};
-          }
-          
-          // 타입별로만 집계
-          const key = row.type;
-          if (!monthlyData[monthKey][key]) {
-            monthlyData[monthKey][key] = { total: 0, days: daysInMonth[monthKey] || 30 };
-          }
-          monthlyData[monthKey][key].total += row.value;
+        
+        // 정렬
+        const sortedData = avgMonthlyData.sort((a: any, b: any) => {
+          const monthOrder = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'];
+          return monthOrder.indexOf(a.period) - monthOrder.indexOf(b.period);
         });
-      }
-      
-      // 평균값 계산하여 배열로 변환
-      const avgMonthlyData = Object.entries(monthlyData).map(([month, plants]) => {
-        const avgData: any = { period: month };
-        Object.entries(plants).forEach(([plantKey, data]) => {
-          // 월 총 발전량을 (일수 * 24시간)으로 나누어 평균 시간당 출력(GW) 계산
-          avgData[plantKey] = data.total / (data.days * 24);
-        });
-        return avgData;
+        
+        setMonthlyChartData(sortedData);
+        console.log('PlantChart - Monthly data loaded:', sortedData.length, 'months');
+        console.log('PlantChart - Sample data:', sortedData[0]);
+        console.log('PlantChart - All months:', sortedData.map(d => d.period));
+      })
+      .catch(err => {
+        console.error('월별 집계 데이터 로드 실패:', err);
+        // fallback to original logic
+        setMonthlyChartData([]);
       });
-      
-      // 정렬
-      const sortedData = avgMonthlyData.sort((a: any, b: any) => {
-        const monthOrder = ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'];
-        return monthOrder.indexOf(a.period) - monthOrder.indexOf(b.period);
+  }, []); // 컴포넌트 마운트 시 한 번만 실행
+
+  useEffect(() => {
+    // plant_hourly_aggregated_original.json에서 시간대별 개별 발전소 데이터 로드
+    console.log('PlantChart - Starting to fetch hourly data...');
+    fetch('/agg_data/plant_hourly_aggregated_original.json') // 원본 값 사용
+      .then(res => {
+        console.log('PlantChart - Hourly fetch response status:', res.status);
+        return res.json();
+      })
+      .then(plantHourly => {
+        console.log('PlantChart - Hourly data received:', plantHourly);
+        const chartData = [];
+        
+        // 24시간 데이터 생성
+        for (let hour = 0; hour < 24; hour++) {
+          const hourKey = hour.toString();
+          const periodKey = `${hour.toString().padStart(2, '0')}:00`;
+          const hourData: any = { period: periodKey };
+          
+          // 태양광 발전소별 데이터 (25% 적용)
+          if (plantHourly.solar) {
+            Object.entries(plantHourly.solar).forEach(([plantName, plantData]: [string, any]) => {
+              hourData[plantName] = (plantData[hourKey] || 0) / 1000; // GWh를 GW로 변환 (원본 값)
+            });
+          }
+          
+          // 풍력 발전소별 데이터 (25% 적용)
+          if (plantHourly.wind) {
+            Object.entries(plantHourly.wind).forEach(([plantName, plantData]: [string, any]) => {
+              hourData[plantName] = (plantData[hourKey] || 0) / 1000; // GWh를 GW로 변환 (원본 값)
+            });
+          }
+          
+          chartData.push(hourData);
+        }
+        
+        setHourlyChartData(chartData);
+        console.log('PlantChart - Hourly data loaded:', chartData.length, 'hours');
+        console.log('PlantChart - Sample hourly data:', chartData[0]);
+      })
+      .catch(err => {
+        console.error('시간대별 집계 데이터 로드 실패:', err);
+        setHourlyChartData([]);
       });
-      
-      setMonthlyChartData(sortedData);
-    }
-  }, [aggregatedData]);
+  }, []);
 
   const handleAggregationChange = (_: any, newValue: 'hourly' | 'monthly' | null) => {
     if (newValue) setAggregation(newValue);
   };
 
-  const aggregateHourlyData = () => {
-    if (!rawData || rawData.length === 0) {
-      return [];
-    }
-    
-    const aggregated: { [key: string]: { [plantType: string]: { total: number; count: number } } } = {};
-    
-    // 발전소만 필터링 (demand 제외)
-    const plantData = rawData.filter(row => row.type !== 'demand');
-
-    plantData.forEach(row => {
-      const date = parseISO(row.datetime);
-      const periodKey = format(date, 'HH:00');
-
-      if (!aggregated[periodKey]) {
-        aggregated[periodKey] = {};
-      }
-
-      // 발전소 타입별로 집계 (solar 또는 wind)
-      const key = row.type;
-      if (!aggregated[periodKey][key]) {
-        aggregated[periodKey][key] = { total: 0, count: 0 };
-      }
-      aggregated[periodKey][key].total += row.value;
-      aggregated[periodKey][key].count += 1;
-    });
-
-    // 평균 계산 및 GWh를 GW로 변환 (시간당 평균이므로 단위 변환 불필요)
-    const chartData = Object.entries(aggregated).map(([period, values]) => {
-      const avgValues: any = { period };
-      Object.entries(values).forEach(([key, data]) => {
-        avgValues[key] = data.count > 0 ? data.total / data.count : 0;
-      });
-      return avgValues;
-    });
-
-    return chartData.sort((a, b) => a.period.localeCompare(b.period));
-  };
-
-  const chartData = aggregation === 'monthly' ? monthlyChartData : aggregateHourlyData();
+  const chartData = aggregation === 'monthly' ? monthlyChartData : hourlyChartData;
   const dataKeys = chartData && chartData.length > 0 
     ? Object.keys(chartData[0]).filter(key => key !== 'period')
     : [];
 
   const getColor = (key: string) => {
-    if (key.includes('solar')) return '#FFA726';
-    if (key.includes('wind')) return '#42A5F5';
+    // 태양광 발전소
+    if (key === '육상태양광') return '#FFA726';
+    if (key === '수상태양광1') return '#FF9800';
+    if (key === '수상태양광2') return '#FFB74D';
+    // 풍력 발전소
+    if (key === '군산해상풍력') return '#42A5F5';
+    if (key === '새만금해상풍력') return '#2196F3';
+    if (key === '서남해해상풍력') return '#64B5F6';
+    // 기본 색상
     return '#9E9E9E';
   };
 
   const formatValue = (value: number) => {
     return value ? value.toFixed(2) : '0';
   };
+
+  console.log('PlantChart - Rendering with data:', {
+    aggregation,
+    chartDataLength: chartData.length,
+    dataKeys: dataKeys,
+    firstDataPoint: chartData.length > 0 ? chartData[0] : null
+  });
 
   return (
     <Paper sx={{ p: 2, width: '100%' }}>
@@ -154,6 +213,13 @@ const PlantChart: React.FC<PlantChartProps> = ({ rawData, aggregatedData }) => {
         </ToggleButtonGroup>
       </Box>
 
+      {chartData.length === 0 ? (
+        <Box sx={{ height: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Typography color="textSecondary">
+            데이터를 로딩 중입니다... "샘플 데이터 로드" 버튼을 클릭해주세요.
+          </Typography>
+        </Box>
+      ) : (
       <ResponsiveContainer width="100%" height={400}>
         <LineChart data={chartData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
           <CartesianGrid strokeDasharray="3 3" />
@@ -167,14 +233,16 @@ const PlantChart: React.FC<PlantChartProps> = ({ rawData, aggregatedData }) => {
               type="monotone"
               dataKey={key}
               stroke={getColor(key)}
-              name={key.replace('_', ' ')}
+              name={key}
               strokeWidth={2}
               dot={false}
             />
           ))}
         </LineChart>
       </ResponsiveContainer>
+      )}
 
+      {chartData.length > 0 && (
       <Box sx={{ mt: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }} onClick={() => setShowTable(!showTable)}>
           <IconButton size="small">
@@ -214,6 +282,7 @@ const PlantChart: React.FC<PlantChartProps> = ({ rawData, aggregatedData }) => {
           </TableContainer>
         </Collapse>
       </Box>
+      )}
     </Paper>
   );
 };

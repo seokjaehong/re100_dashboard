@@ -80,115 +80,231 @@ const CSVUploader: React.FC<CSVUploaderProps> = ({ onDataLoaded }) => {
     setError('');
     
     try {
-      // 1. 최적화된 데이터 먼저 로드 시도 (빠른 로딩)
-      let useOptimized = false;
-      try {
-        const optimizedResponse = await fetch('/sample_data/optimized_data_2024.json');
-        if (optimizedResponse.ok) {
-          console.log('최적화된 데이터 사용 (1.7MB)');
-          useOptimized = true;
-        }
-      } catch (e) {
-        console.log('최적화된 데이터 없음, 기존 데이터 사용');
+      // 1. plant_list.csv 읽기
+      const plantListResponse = await fetch('/sample_data/plant_list.csv');
+      if (!plantListResponse.ok) {
+        throw new Error('plant_list.csv를 불러올 수 없습니다.');
       }
       
-      // 2. 집계된 JSON 데이터 로드
-      const response = await fetch('/sample_data/aggregated_full_year.json');
-      if (!response.ok) {
-        throw new Error('샘플 데이터를 불러올 수 없습니다.');
-      }
+      const plantListText = await plantListResponse.text();
+      const plantListResults = Papa.parse(plantListText, { header: true });
+      const plantList = plantListResults.data as any[];
       
-      const aggregatedData = await response.json();
+      // 2. 각 공급 데이터 파일 읽기
+      let allSupplyData: CSVRow[] = [];
       
-      // 3. CSV 데이터 로드 전략 결정
-      let csvUrl = '/sample_data/sample_data_integrated_2024.csv';
-      if (useOptimized) {
-        // 최적화된 시간별 데이터 사용 (0.39MB vs 35MB)
-        csvUrl = '/sample_data/optimized_hourly_2024.csv';
-        console.log('최적화된 CSV 사용 (0.39MB vs 35MB)');
-      }
+      console.log('Plant list:', plantList);
       
-      // 원본 또는 최적화된 CSV 데이터 로드
-      const csvResponse = await fetch(csvUrl);
-      if (!csvResponse.ok) {
-        throw new Error('CSV 데이터를 불러올 수 없습니다.');
-      }
-      
-      const text = await csvResponse.text();
-      
-      Papa.parse(text, {
-        header: true,
-        complete: (results) => {
-          try {
-            const parsedData = results.data as any[];
-            let validData: CSVRow[] = [];
+      for (const plant of plantList) {
+        if (!plant.filename) continue;
+        
+        console.log(`Loading ${plant.filename}...`);
+        
+        try {
+          const supplyResponse = await fetch(`/sample_data/${plant.filename}`);
+          if (supplyResponse.ok) {
+            const supplyText = await supplyResponse.text();
+            const supplyResults = Papa.parse(supplyText, { header: true });
+            const supplyData = supplyResults.data as any[];
             
-            if (useOptimized) {
-              // 최적화된 데이터는 이미 집계되어 있으므로 변환 필요
-              validData = parsedData
-                .filter(row => row.datetime)
-                .flatMap(row => {
-                  const result: CSVRow[] = [];
-                  // 태양광 데이터
-                  if (row.total_solar && parseFloat(row.total_solar) > 0) {
-                    result.push({
-                      datetime: row.datetime,
-                      type: 'solar' as const,
-                      plant_name: 'aggregated_solar',
-                      value: parseFloat(row.total_solar) // 이미 GWh
-                    });
-                  }
-                  // 풍력 데이터
-                  if (row.total_wind && parseFloat(row.total_wind) > 0) {
-                    result.push({
-                      datetime: row.datetime,
-                      type: 'wind' as const,
-                      plant_name: 'aggregated_wind',
-                      value: parseFloat(row.total_wind) // 이미 GWh
-                    });
-                  }
-                  // 수요 데이터
-                  if (row.total_demand && parseFloat(row.total_demand) > 0) {
-                    result.push({
-                      datetime: row.datetime,
-                      type: 'demand' as const,
-                      plant_name: 'aggregated_demand',
-                      value: parseFloat(row.total_demand) // 이미 GWh
-                    });
-                  }
-                  return result;
-                });
-            } else {
-              // 원본 데이터 처리
-              validData = parsedData
-                .filter(row => row.datetime && row.type && row.plant_name && row.value !== undefined)
-                .map(row => ({
-                  datetime: row.datetime,
-                  type: row.type as 'solar' | 'wind' | 'demand',
-                  plant_name: row.plant_name,
-                  value: parseFloat(row.value) / 1000000 // kWh to GWh conversion
-                }));
-            }
+            console.log(`Parsed ${plant.filename}: ${supplyData.length} rows`);
             
-            if (validData.length === 0) {
-              setError('샘플 데이터에 유효한 데이터가 없습니다.');
-              return;
-            }
+            const validSupplyData = supplyData
+              .filter(row => row.datetime && row.type && row.plant_name && row.value !== undefined)
+              .map(row => ({
+                datetime: row.datetime,
+                type: row.type as 'solar' | 'wind',
+                plant_name: row.plant_name,
+                value: parseFloat(row.value) / 1000000 // kWh to GWh conversion (원본 값 사용)
+              }));
             
-            console.log(`로드 완료: ${validData.length}개 레코드`);
-            
-            // 샘플 데이터 로드는 기존 데이터를 대체
-            onDataLoaded(validData, aggregatedData, false);
-          } catch (err) {
-            setError('샘플 데이터 처리 중 오류가 발생했습니다.');
+            allSupplyData = [...allSupplyData, ...validSupplyData];
+            console.log(`${plant.filename} 로드 완료: ${validSupplyData.length}개 레코드`);
+          } else {
+            console.error(`${plant.filename} 로드 실패: HTTP ${supplyResponse.status}`);
           }
-        },
-        error: (error: any) => {
-          setError(`샘플 데이터 파싱 오류: ${error.message}`);
+        } catch (err) {
+          console.error(`${plant.filename} 로드 실패:`, err);
         }
-      });
+      }
+      
+      // 3. 수요 데이터 읽기
+      console.log('Loading demand data...');
+      const demandResponse = await fetch('/sample_data/sample_data_integrated_2024_integrated.csv');
+      if (!demandResponse.ok) {
+        throw new Error('수요 데이터를 불러올 수 없습니다.');
+      }
+      
+      const demandText = await demandResponse.text();
+      const demandResults = Papa.parse(demandText, { header: true });
+      const demandData = demandResults.data as any[];
+      
+      console.log(`Parsed demand data: ${demandData.length} rows`);
+      if (demandData.length > 0) {
+        console.log('First demand row:', demandData[0]);
+      }
+      
+      const validDemandData = demandData
+        .filter(row => row.datetime && row.type === 'demand' && row.plant_name && row.value !== undefined)
+        .map(row => ({
+          datetime: row.datetime,
+          type: 'demand' as const,
+          plant_name: row.plant_name,
+          value: parseFloat(row.value) / 1000000 // kWh to GWh conversion (원본 값 사용)
+        }));
+      
+      console.log(`수요 데이터 로드 완료: ${validDemandData.length}개 레코드`);
+      
+      // 4. 모든 데이터 합치기
+      const allData = [...allSupplyData, ...validDemandData];
+      
+      if (allData.length === 0) {
+        setError('유효한 데이터가 없습니다.');
+        return;
+      }
+      
+      console.log(`전체 로드 완료: ${allData.length}개 레코드`);
+      
+      // 집계된 월별 데이터 로드 (10% 적용된 데이터)
+      try {
+        const monthlyResponse = await fetch('/agg_data/monthly_aggregated_original.json');
+        let aggregatedData = undefined;
+        
+        if (monthlyResponse.ok) {
+          const monthlyAggregated = await monthlyResponse.json();
+          
+          // 월별 차트용 데이터 생성
+          const monthlyData = [];
+          for (let month = 1; month <= 12; month++) {
+            const monthKey = `2024-${month.toString().padStart(2, '0')}`;
+            const monthLabel = `${month}월`;
+            
+            const totalSolar = monthlyAggregated.solar?.total?.[monthKey] || 0; // 이미 10% 적용됨
+            const totalWind = monthlyAggregated.wind?.total?.[monthKey] || 0; // 이미 10% 적용됨
+            const totalDemand = monthlyAggregated.demand?.[monthKey] || 0; // 이미 10% 적용됨
+            // Recalculate RE100 rate with adjusted values
+            const re100Rate = totalDemand > 0 ? Math.min(((totalSolar + totalWind) / totalDemand) * 100, 100) : 0;
+            
+            monthlyData.push({
+              month: monthLabel,
+              monthLabel: monthLabel,
+              totalSupply: totalSolar + totalWind,
+              totalSolar: totalSolar,
+              totalWind: totalWind,
+              totalDemand: totalDemand,
+              negativeDemand: -totalDemand,
+              re100Rate: re100Rate,
+              externalPower: Math.max(0, totalDemand - (totalSolar + totalWind))
+            });
+          }
+          
+          // ESS 용량 계산 (간단 예시)
+          const essCapacity = Math.max(...monthlyData.map((m: any) => m.externalPower));
+          
+          // 기업별 월별 데이터 로드 (10% 적용된 데이터)
+          let companyMonthlyData = [];
+          try {
+            const companyMonthlyResponse = await fetch('/agg_data/company_monthly_aggregated_original.json');
+            if (companyMonthlyResponse.ok) {
+              const companyMonthly = await companyMonthlyResponse.json();
+              // 플랫 형식으로 변환 (원본 값 사용)
+              for (const [company, monthData] of Object.entries(companyMonthly)) {
+                if (company === 'total') continue; // total 제외
+                for (const [monthKey, value] of Object.entries(monthData as any)) {
+                  const monthNum = parseInt(monthKey.split('-')[1]);
+                  companyMonthlyData.push({
+                    company: company,
+                    month: `${monthNum}월`,
+                    value: value as number // 원본 값 사용
+                  });
+                }
+              }
+            }
+          } catch (err) {
+            console.log('기업별 월별 데이터 로드 실패:', err);
+          }
+          
+          // pieData 생성 - 발전소별 및 기업별 데이터
+          const solarPlants = [];
+          const windPlants = [];
+          const companies = [];
+          
+          // 발전소별 연간 총 발전량 계산
+          if (monthlyAggregated.solar) {
+            for (const [plantName, plantData] of Object.entries(monthlyAggregated.solar)) {
+              if (plantName !== 'total' && typeof plantData === 'object') {
+                const totalValue = Object.values(plantData as any).reduce((sum: number, val: any) => sum + val, 0);
+                solarPlants.push({ name: plantName, value: totalValue });
+              }
+            }
+          }
+          
+          if (monthlyAggregated.wind) {
+            for (const [plantName, plantData] of Object.entries(monthlyAggregated.wind)) {
+              if (plantName !== 'total' && typeof plantData === 'object') {
+                const totalValue = Object.values(plantData as any).reduce((sum: number, val: any) => sum + val, 0);
+                windPlants.push({ name: plantName, value: totalValue });
+              }
+            }
+          }
+          
+          // 기업별 연간 총 사용량 계산 (Top 10)
+          const companyTotals: { [key: string]: number } = {};
+          companyMonthlyData.forEach((item: any) => {
+            if (!companyTotals[item.company]) {
+              companyTotals[item.company] = 0;
+            }
+            companyTotals[item.company] += item.value;
+          });
+          
+          // 상위 10개 기업 선택
+          const sortedCompanies = Object.entries(companyTotals)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 10)
+            .map(([name, value]) => ({ name, value }));
+          
+          aggregatedData = {
+            monthlyData: monthlyData,
+            hourlyData: [], // 빈 배열로 설정 (실제 데이터는 allData에서 처리)
+            essCapacity: essCapacity,
+            companyMonthly: companyMonthlyData,
+            solar: monthlyAggregated.solar,
+            wind: monthlyAggregated.wind,
+            pieData: {
+              solar_plants: solarPlants,
+              wind_plants: windPlants,
+              companies: sortedCompanies
+            },
+            summary: {
+              totalSolar: Object.values(monthlyAggregated.solar?.total || {}).reduce((a: number, b: any) => a + b, 0), // 원본 값 사용
+              totalWind: Object.values(monthlyAggregated.wind?.total || {}).reduce((a: number, b: any) => a + b, 0), // 원본 값 사용
+              totalDemand: Object.values(monthlyAggregated.demand || {}).reduce((a: number, b: any) => a + b, 0), // 원본 값 사용
+              avgRE100Rate: monthlyData.reduce((sum: number, m: any) => sum + m.re100Rate, 0) / monthlyData.length
+            }
+          };
+          
+          console.log('CSVUploader - Company monthly data loaded:', companyMonthlyData.length, 'entries');
+          console.log('CSVUploader - Sample company data:', companyMonthlyData.slice(0, 3));
+          console.log('CSVUploader - PieData created:', {
+            solarPlants: solarPlants.length,
+            windPlants: windPlants.length,
+            companies: sortedCompanies.length
+          });
+          console.log('CSVUploader - Total solar:', solarPlants.reduce((sum: any, p: any) => sum + p.value, 0).toFixed(2), 'GWh');
+          console.log('CSVUploader - Total wind:', windPlants.reduce((sum: any, p: any) => sum + p.value, 0).toFixed(2), 'GWh');
+          console.log('CSVUploader - Top company:', sortedCompanies[0]);
+        }
+        
+        // 샘플 데이터 로드는 기존 데이터를 대체
+        onDataLoaded(allData, aggregatedData, false);
+      } catch (aggErr) {
+        console.error('집계 데이터 로드 실패:', aggErr);
+        // 집계 데이터 없이 원본 데이터만 로드
+        onDataLoaded(allData, undefined, false);
+      }
     } catch (err) {
-      setError('샘플 데이터 로드 실패');
+      setError('샘플 데이터 로드 실패: ' + (err as Error).message);
+      console.error('Load error:', err);
     } finally {
       setLoading(false);
     }

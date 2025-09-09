@@ -24,7 +24,7 @@ const MonthlyChart: React.FC<MonthlyChartProps> = ({ data }) => {
   return (
     <Paper sx={{ p: 2, width: '100%' }}>
       <Typography variant="h6" gutterBottom>
-        월별 RE100 달성 현황 (2024년)
+        월별 RE100 달성 현황
       </Typography>
       <ResponsiveContainer width="100%" height={400}>
         <ComposedChart data={formattedData} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
