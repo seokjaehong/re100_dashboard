@@ -31,12 +31,13 @@ const PlantChart: React.FC<PlantChartProps> = ({ rawData, aggregatedData }) => {
           if (!monthlyData[item.month]) {
             monthlyData[item.month] = {};
           }
-          const key = `${item.type}_${item.plant}`;
+          // 타입별로만 집계 (개별 발전소 구분 제거)
+          const key = item.type;
           const days = daysInMonth[item.month] || 30;
-          monthlyData[item.month][key] = { 
-            total: item.value, 
-            days: days 
-          };
+          if (!monthlyData[item.month][key]) {
+            monthlyData[item.month][key] = { total: 0, days: days };
+          }
+          monthlyData[item.month][key].total += item.value;
         });
       } else if (rawData && rawData.length > 0) {
         // rawData에서 직접 월별 데이터 계산
@@ -49,7 +50,8 @@ const PlantChart: React.FC<PlantChartProps> = ({ rawData, aggregatedData }) => {
             monthlyData[monthKey] = {};
           }
           
-          const key = `${row.type}_${row.plant_name}`;
+          // 타입별로만 집계
+          const key = row.type;
           if (!monthlyData[monthKey][key]) {
             monthlyData[monthKey][key] = { total: 0, days: daysInMonth[monthKey] || 30 };
           }
@@ -86,7 +88,7 @@ const PlantChart: React.FC<PlantChartProps> = ({ rawData, aggregatedData }) => {
       return [];
     }
     
-    const aggregated: { [key: string]: { [plantName: string]: { total: number; count: number } } } = {};
+    const aggregated: { [key: string]: { [plantType: string]: { total: number; count: number } } } = {};
     
     // 발전소만 필터링 (demand 제외)
     const plantData = rawData.filter(row => row.type !== 'demand');
@@ -99,7 +101,8 @@ const PlantChart: React.FC<PlantChartProps> = ({ rawData, aggregatedData }) => {
         aggregated[periodKey] = {};
       }
 
-      const key = `${row.type}_${row.plant_name}`;
+      // 발전소 타입별로 집계 (solar 또는 wind)
+      const key = row.type;
       if (!aggregated[periodKey][key]) {
         aggregated[periodKey][key] = { total: 0, count: 0 };
       }

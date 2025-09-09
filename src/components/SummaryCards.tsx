@@ -61,6 +61,9 @@ const SummaryCards: React.FC<SummaryCardsProps> = ({ processedData, essCapacity,
 
   return (
     <Box sx={{ mb: 3 }}>
+      <Typography variant="h5" gutterBottom sx={{ fontWeight: 'bold', mb: 2 }}>
+        2024년 RE100 달성 현황 요약
+      </Typography>
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
         <Box sx={{ flex: '1 1 calc(25% - 16px)', minWidth: 200 }}>
           <Card sx={{ background: 'linear-gradient(135deg, #FFA726 30%, #FFB74D 90%)' }}>
