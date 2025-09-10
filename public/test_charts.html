@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chart Data Test</title>
+    <script>
+        // Function to test data loading
+        async function testDataLoading() {
+            console.log('Testing data loading...');
+            
+            // Test loading monthly aggregated data
+            try {
+                const monthlyRes = await fetch('/agg_data/monthly_aggregated_original.json');
+                const monthlyData = await monthlyRes.json();
+                console.log('✓ Monthly data loaded:', monthlyData);
+                console.log('  - Solar plants:', Object.keys(monthlyData.solar));
+                console.log('  - Wind plants:', Object.keys(monthlyData.wind));
+            } catch (e) {
+                console.error('✗ Failed to load monthly data:', e);
+            }
+            
+            // Test loading hourly aggregated data
+            try {
+                const hourlyRes = await fetch('/agg_data/plant_hourly_aggregated_original.json');
+                const hourlyData = await hourlyRes.json();
+                console.log('✓ Hourly data loaded:', hourlyData);
+                console.log('  - Solar plants:', Object.keys(hourlyData.solar));
+                console.log('  - Wind plants:', Object.keys(hourlyData.wind));
+            } catch (e) {
+                console.error('✗ Failed to load hourly data:', e);
+            }
+            
+            // Test loading company data
+            try {
+                const companyRes = await fetch('/agg_data/company_monthly_aggregated_original.json');
+                const companyData = await companyRes.json();
+                console.log('✓ Company data loaded');
+                const companies = Object.keys(companyData).filter(k => k !== 'total');
+                console.log('  - Number of companies:', companies.length);
+                console.log('  - First 5 companies:', companies.slice(0, 5));
+            } catch (e) {
+                console.error('✗ Failed to load company data:', e);
+            }
+        }
+        
+        // Run test when page loads
+        window.onload = testDataLoading;
+    </script>
+</head>
+<body>
+    <h1>Chart Data Test</h1>
+    <p>Open the browser console to see the test results.</p>
+    <button onclick="testDataLoading()">Re-test Data Loading</button>
+</body>
+</html>

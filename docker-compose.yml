@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  re100-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: re100-monitoring
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+    volumes:
+      # 업로드된 데이터 영속성 (선택적)
+      # - ./data:/usr/share/nginx/html/data
+    networks:
+      - re100-network
+
+networks:
+  re100-network:
+    driver: bridge

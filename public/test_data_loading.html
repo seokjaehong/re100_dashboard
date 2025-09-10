@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Data Loading Test</title>
+</head>
+<body>
+    <h1>Data Loading Test</h1>
+    <button onclick="testAllData()">Test All Data Loading</button>
+    <div id="results"></div>
+
+    <script>
+        async function testAllData() {
+            const results = document.getElementById('results');
+            results.innerHTML = '<h2>Testing data loading...</h2>';
+            
+            const tests = [
+                { path: '/agg_data/monthly_aggregated_original.json', name: 'Monthly Aggregated' },
+                { path: '/agg_data/plant_hourly_aggregated_original.json', name: 'Plant Hourly' },
+                { path: '/agg_data/company_monthly_aggregated_original.json', name: 'Company Monthly' },
+                { path: '/agg_data/plant_monthly_aggregated.json', name: 'Plant Monthly' }
+            ];
+            
+            for (const test of tests) {
+                try {
+                    console.log(`Testing ${test.name}...`);
+                    const response = await fetch(test.path);
+                    console.log(`${test.name} - Response status:`, response.status);
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        console.log(`${test.name} - Data loaded:`, data);
+                        
+                        // Check data structure
+                        let info = `<h3>✅ ${test.name}</h3>`;
+                        info += `<p>Status: ${response.status}</p>`;
+                        
+                        if (data.solar) {
+                            const solarKeys = Object.keys(data.solar);
+                            info += `<p>Solar plants: ${solarKeys.join(', ')}</p>`;
+                        }
+                        if (data.wind) {
+                            const windKeys = Object.keys(data.wind);
+                            info += `<p>Wind plants: ${windKeys.join(', ')}</p>`;
+                        }
+                        if (typeof data === 'object' && !data.solar && !data.wind) {
+                            const keys = Object.keys(data).slice(0, 5);
+                            info += `<p>Keys: ${keys.join(', ')}...</p>`;
+                        }
+                        
+                        results.innerHTML += info;
+                    } else {
+                        results.innerHTML += `<h3>❌ ${test.name}</h3><p>Failed with status: ${response.status}</p>`;
+                        console.error(`${test.name} - Failed:`, response.status);
+                    }
+                } catch (error) {
+                    results.innerHTML += `<h3>❌ ${test.name}</h3><p>Error: ${error.message}</p>`;
+                    console.error(`${test.name} - Error:`, error);
+                }
+            }
+            
+            // Test the PlantChart logic
+            console.log('\n=== Testing PlantChart Data Processing ===');
+            try {
+                const monthlyRes = await fetch('/agg_data/monthly_aggregated_original.json');
+                const monthlyData = await monthlyRes.json();
+                
+                // Simulate PlantChart data processing
+                const chartData = [];
+                const daysInMonth = {
+                    '1월': 31, '2월': 29, '3월': 31, '4월': 30, '5월': 31, '6월': 30,
+                    '7월': 31, '8월': 31, '9월': 30, '10월': 31, '11월': 30, '12월': 31
+                };
+                
+                // Process solar data
+                if (monthlyData.solar) {
+                    Object.entries(monthlyData.solar).forEach(([plantName, plantData]) => {
+                        if (plantName === 'total') return;
+                        console.log(`Processing ${plantName}:`, plantData);
+                    });
+                }
+                
+                console.log('Chart data would be:', chartData);
+            } catch (err) {
+                console.error('PlantChart simulation error:', err);
+            }
+        }
+        
+        // Auto-run on load
+        window.onload = testAllData;
+    </script>
+</body>
+</html>
